@@ -196,7 +196,7 @@
 <script>
 (() => {
   const volatilities = [
-    { symbol: '1HZ100V', name: 'Vol 100 (1s)', barrierHigher: -0.34, barrierLower: 0.34 },
+    { symbol: 'R_75', name: 'Vol 100 (1s)', barrierHigher: -60, barrierLower: 0.60 },
     { symbol: '1HZ25V', name: 'Vol 25 (1s)', barrierHigher: -80, barrierLower: 80 },
     { symbol: '1HZ50V', name: 'Vol 50 (1s)', barrierHigher: -61, barrierLower: 61 },
     { symbol: '1HZ75V', name: 'Vol 75 (1s)', barrierHigher: -2.6, barrierLower: 2.6 }
@@ -204,8 +204,8 @@
 
   const dataStore = {};
   let ws = null;
-  const MIN_DATA_POINTS = 50;
-  const CONFIRMATION_PERIOD = 3;
+  const MIN_DATA_POINTS = 30;
+  const CONFIRMATION_PERIOD = 5;
   const STRONG_THRESHOLD = 0.7; // Strength threshold for strong signals
 
   class EMA {
