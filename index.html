@@ -143,6 +143,14 @@
     text-shadow: 0 0 5px rgba(255, 255, 0, 0.5);
     animation: pulse-weak 2s infinite;
   }
+  .signal-consolidation {
+    background: rgba(138, 43, 226, 0.15);
+    color: #9932cc;
+    border: 1px solid rgba(138, 43, 226, 0.5);
+    box-shadow: 0 0 10px rgba(138, 43, 226, 0.3);
+    text-shadow: 0 0 5px rgba(138, 43, 226, 0.5);
+    animation: pulse-consolidation 2s infinite;
+  }
   @keyframes pulse-building {
     0% { box-shadow: 0 0 5px rgba(255, 165, 0, 0.3); }
     50% { box-shadow: 0 0 15px rgba(255, 165, 0, 0.5); }
@@ -152,6 +160,11 @@
     0% { box-shadow: 0 0 5px rgba(255, 255, 0, 0.3); }
     50% { box-shadow: 0 0 15px rgba(255, 255, 0, 0.5); }
     100% { box-shadow: 0 0 5px rgba(255, 255, 0, 0.3); }
+  }
+  @keyframes pulse-consolidation {
+    0% { box-shadow: 0 0 5px rgba(138, 43, 226, 0.3); }
+    50% { box-shadow: 0 0 15px rgba(138, 43, 226, 0.5); }
+    100% { box-shadow: 0 0 5px rgba(138, 43, 226, 0.3); }
   }
   .countdown {
     font-size: clamp(10px, 2.5vw, 11px);
@@ -247,6 +260,8 @@
   const CONFIRMATION_PERIOD = 7;
   const STRONG_THRESHOLD = 0.7; // Strength threshold for strong signals
   const WEAK_THRESHOLD = 0.4; // Strength threshold for weak signals
+  const CONSOLIDATION_PERIOD = 15; // Number of periods to check for consolidation
+  const CONSOLIDATION_RANGE_PERCENT = 0.5; // Max price range percentage for consolidation
 
   class EMA {
     constructor(period) {
@@ -593,6 +608,7 @@
         bbCalc: new BollingerBands(20, 2),
         confirmationCount: 0,
         lastSignal: null,
+        consolidationCount: 0,
         ui: {
           price: card.querySelector(`#price-${v.symbol}`),
           macdLine: card.querySelector(`#macd-${v.symbol}`),
@@ -650,6 +666,49 @@
   function calculateSMA(prices, period) {
     if (prices.length < period) return null;
     return prices.slice(-period).reduce((sum, price) => sum + price, 0) / period;
+  }
+
+  function checkConsolidation(data) {
+    if (data.closes.length < CONSOLIDATION_PERIOD) return false;
+    
+    // Get the recent price range
+    const recentCloses = data.closes.slice(-CONSOLIDATION_PERIOD);
+    const recentHighs = data.highs.slice(-CONSOLIDATION_PERIOD);
+    const recentLows = data.lows.slice(-CONSOLIDATION_PERIOD);
+    
+    const maxHigh = Math.max(...recentHighs);
+    const minLow = Math.min(...recentLows);
+    const range = maxHigh - minLow;
+    const avgPrice = recentCloses.reduce((sum, p) => sum + p, 0) / recentCloses.length;
+    const rangePercent = (range / avgPrice) * 100;
+    
+    // Check if price range is small enough
+    if (rangePercent > CONSOLIDATION_RANGE_PERCENT) return false;
+    
+    // Check indicators for neutral conditions
+    const macd = data.macdCalc;
+    const rsi = data.rsiCalc.getCurrent();
+    const adx = data.adxCalc;
+    const bb = data.bbCalc;
+    const stoch = data.stochCalc;
+    
+    // MACD histogram near zero
+    if (Math.abs(macd.histogram) > 0.5) return false;
+    
+    // RSI in middle range
+    if (rsi < 40 || rsi > 60) return false;
+    
+    // ADX shows weak trend
+    if (adx.adx > 20) return false;
+    
+    // Bollinger Bands %B near middle
+    const bbPercent = bb.percentB;
+    if (bbPercent < 0.4 || bbPercent > 0.6) return false;
+    
+    // Stochastic in middle range
+    if (stoch.k < 40 || stoch.k > 60 || stoch.d < 40 || stoch.d > 60) return false;
+    
+    return true;
   }
 
   function handleTick(tick) {
@@ -717,6 +776,21 @@
     const bb = d.bbCalc.update(price);
     if (bb !== null) {
       d.ui.bbPercent.textContent = bb.percentB.toFixed(2);
+    }
+    
+    // Check for consolidation first
+    const isConsolidating = checkConsolidation(d);
+    if (isConsolidating) {
+      d.consolidationCount++;
+      if (d.consolidationCount >= 3) { // Require 3 consecutive confirmations
+        d.ui.signalText.textContent = 'CONSOLIDATION';
+        d.ui.signalText.className = 'signal-area signal-consolidation';
+        d.ui.countdown.textContent = 'Market ranging - wait for breakout';
+        d.ui.explanation.textContent = 'Price moving sideways, indicators neutral - wait for breakout direction';
+        return; // Skip other signal processing during consolidation
+      }
+    } else {
+      d.consolidationCount = 0;
     }
     
     // Only generate signals if we have enough data
